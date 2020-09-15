@@ -59,10 +59,10 @@ class SessionOperator(object):
         # if const.generate_views: #not sure why this is necessary....
         #     #self.run(tf.variables_initializer(inputs.foo_counters))
         #     self.run(inputs.foo_counters)
-        
+
         if not const.eager:
             tf.get_default_graph().finalize()
-            
+
         print('finished graph initialization in %f seconds' % (time() - T1))
 
     def go(self, mode):
@@ -126,14 +126,14 @@ class ModelOperator(SessionOperator):
 
             if const.SKIP_RUN:
                 print('skipping run')
-                continue 
+                continue
 
             if const.DEBUG_SPEED:
                 print('running mode:', mode)
 
             stuff_ = self.model.run(mode, self.sess)
             stuff.append(stuff_)
-                
+
         if const.DEBUG_SPEED:
             t1 = time()
             print('time: %f' % (t1 - t0))
@@ -143,7 +143,7 @@ class ModelOperator(SessionOperator):
 
     def train(self):
         print('STARTING TRAIN')
-        
+
         if const.DEBUG_MEMORY:
             #need to write to log, since leak means process would be killed
             utils.utils.ensure('memory_log')
@@ -165,7 +165,7 @@ class ModelOperator(SessionOperator):
             self.train_step(step)
             if not(step % const.valp):
                 self.val_step(step)
-            
+
 
     def test(self):
         step = 0
@@ -175,10 +175,10 @@ class ModelOperator(SessionOperator):
             if not self.test_step(step):
                 break
             print('test step %d' % step)
-            
+
         if self.evaluator:
-            self.evaluator.finish()            
-        
+            self.evaluator.finish()
+
     def train_step(self, step):
         utils.utils.nyi()
 
@@ -186,7 +186,7 @@ class ModelOperator(SessionOperator):
         utils.utils.nyi()
 
     def test_step(self, step):
-        utils.utils.nyi()        
+        utils.utils.nyi()
 
 
 class ModalOperator(ModelOperator):
@@ -205,7 +205,7 @@ class ModalOperator(ModelOperator):
         self.train_modes = train_modes
         self.val_modes = val_modes
         self.test_modes = test_modes
-        
+
         super(ModalOperator, self).__init__(
             model, savename=savename, loadname=loadname, vis=vis, tb=tb, evaluator=evaluator
         )
@@ -249,7 +249,7 @@ class ModalOperator(ModelOperator):
 
     def test_step(self, step):
         assert len(self.test_modes) == 1, "can't have multiple test modes"
-        
+
         try:
             test_stuff = self.run_steps(self.test_modes)[0]
         except tf.errors.OutOfRangeError:
@@ -274,9 +274,9 @@ class GenerateViews(ModalOperator):
         visualizations = [test_stuff['vis']['pred_views'][0] for test_stuff in test_stuffs]
         self.vis.process(test_stuffs[0]['vis'], self.test_modes[0], step)
         self.vis.process({'gen_views': visualizations}, self.test_modes[0], step)
-        
+
         if False: #plot immediately
-            
+
             #just for visualization purposes
             def chunks(l, n):
                 """Yield successive n-sized chunks from l."""
@@ -286,7 +286,7 @@ class GenerateViews(ModalOperator):
             import numpy as np
 
             row_size = const.AZIMUTH_GRANULARITY if (const.ELEV_GRANULARITY > 1) else 12
-        
+
             rows = list(chunks(visualizations, row_size))
             rows = [np.concatenate(row, axis = 1) for row in rows]
             total = np.concatenate(rows, axis = 0)
@@ -296,5 +296,3 @@ class GenerateViews(ModalOperator):
             plt.show()
 
         return True
-        
-       

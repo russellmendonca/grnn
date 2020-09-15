@@ -20,7 +20,7 @@ if const.force_batchnorm_testmode:
 
 
 normalizer_params={
-    'is_training': bn_trainmode, 
+    'is_training': bn_trainmode,
     'decay': const.bn_decay,
     'epsilon': 1e-3,
     'scale': False,
@@ -49,7 +49,7 @@ if const.inject_summaries:
         func = getattr(slim, funcname)
         setattr(slim2, funcname, summary_wrap(func))
 else:
-    slim2 = slim    
+    slim2 = slim
 
 def unproject(inputs, resize = False):
 
@@ -65,7 +65,7 @@ def unproject(inputs, resize = False):
     meshgridz = tf.range(size, dtype = tf.float32)
     meshgridz = tf.reshape(meshgridz, (1, size, 1, 1))
     meshgridz = tf.tile(meshgridz, (const.BS, 1, size, size))
-    meshgridz = tf.expand_dims(meshgridz, axis = 4) 
+    meshgridz = tf.expand_dims(meshgridz, axis = 4)
     meshgridz = (meshgridz + 0.5) / (size/2) - 1.0 #now (-1,1)
 
     #get the rough outline
@@ -76,7 +76,7 @@ def unproject(inputs, resize = False):
         outline_thickness = 0.1
     else:
         outline_thickness = 0.2
-    
+
     outline = tf.cast(tf.logical_and(
         unprojected_depth <= meshgridz,
         unprojected_depth + outline_thickness > meshgridz
@@ -99,7 +99,7 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
     #aux is used for the category input
 
     #for backward compatibility
-    # normalizer_params={'is_training': bn_trainmode, 
+    # normalizer_params={'is_training': bn_trainmode,
     #                    'decay': 0.999,
     #                    'epsilon': 1e-5,
     #                    'scale': True,
@@ -109,13 +109,13 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
     normalizer_params2[scale] = True
     normalizer_params2[epsilon] = 1E-5
     st()
-    
+
     with slim.arg_scope([slim.conv3d, slim.conv3d_transpose],
                         activation_fn=tf.nn.relu,
                         normalizer_fn=slim.batch_norm if bn else None,
                         normalizer_params=normalizer_params2
                         ):
-        
+
         dims = [d0, 2*d0, 4*d0, 8*d0, 16*d0]
         ksizes = [4, 4, 4, 4, 8]
         strides = [2, 2, 2, 2, 1]
@@ -133,7 +133,7 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
             net = slim2.conv3d(net, dim, ksize, stride=stride, padding=padding)
 
             skipcons.append(net)
-        
+
         #BS x 4 x 4 x 4 x 256
 
         if aux is not None:
@@ -151,14 +151,14 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
             ksizes[0] = 4
         elif const.S == 32:
             ksizes[0] = 2
-        
+
         decoder_trainable = not const.rpvx_unsup #don't ruin the decoder by FTing
 
         skipcons.pop() #we don't want the innermost layer as skipcon
 
         foo = lambda: None
         #we'll use this object to smuggle additional information out
-        
+
         for i, (chan, stride, ksize, padding, activation_fn) \
             in enumerate(zip(chans, strides, ksizes, paddings, activation_fns)):
 
@@ -199,9 +199,9 @@ def convgru_(inputs, kernel=[3, 3, 3], filters=32):
         kernel=kernel,
         filters=filters
     )
-    
+
     seq_length = [l]*bs
-    
+
     outputs, state = tf.nn.dynamic_rnn(
         conv_gru,
         inputs,
@@ -211,7 +211,7 @@ def convgru_(inputs, kernel=[3, 3, 3], filters=32):
         time_major=False,
         swap_memory = True,
     )
-    
+
     return Munch(outputs = outputs, state = state)
 
 def gru_aggregator(inputs):
@@ -229,21 +229,21 @@ def encoder3D(inputs, aux = None, d0 = 16):
     #BATCH NORM IS BROKEN HERE
     raise Exception('you should probably not be using this')
 
-    net = inputs    
+    net = inputs
     with slim.arg_scope([slim.conv3d, slim.conv3d_transpose],
                         activation_fn=tf.nn.relu,
                         normalizer_fn=slim.batch_norm):
         dims = [d0, 2*d0, 4*d0, 8*d0, 16*d0]
         ksizes = [4, 4, 4, 4, 8]
-        strides = [2, 2, 2, 2, 1] 
+        strides = [2, 2, 2, 2, 1]
         paddings = ['SAME'] * 4 + ['VALID']
 
         skipcons = [net]
-        
+
         for i, (dim, ksize, stride, padding) in enumerate(zip(dims, ksizes, strides, paddings)):
             net = slim2.conv3d(net, dim, ksize, stride=stride, padding=padding)
             skipcons.append(net)
-        
+
         if aux is not None:
             aux = tf.reshape(aux, (const.BS, 1, 1, 1, -1))
             net = tf.concat([aux, net], axis = 4)
@@ -267,14 +267,14 @@ def depth_channel_net_v2(feature):
 
     if False:
         return DRC(feature)
-    
+
     if const.W == const.H == 128:
         K = 8
     elif const.W == const.H == 64:
         K = 4
-        
+
     feature = tf.nn.pool(feature, [1,1,K], 'MAX', 'SAME', strides = [1,1,K])
-    
+
     bs, h, w, d_, c = map(int, feature.shape)
     feature = tf.reshape(feature, (bs, h, w, d_*c))
 
@@ -304,7 +304,7 @@ def DRC(feature):
         print('asdf')
         foo = occ
     return tf.reduce_sum(hit_here * feature, axis = 3)
-    
+
 def decoder2D(features, apply_3to2 = True):
     features = features[::-1]
     if apply_3to2:
@@ -314,7 +314,7 @@ def decoder2D(features, apply_3to2 = True):
         dims = [256, 128, 64, 32] #original
     else:
         dims = [128, 64, 32, 16] #with feature projection
-        
+
     ksizes = [4]*4
     strides = [2]*4
     paddings = ['SAME']*4
@@ -328,7 +328,7 @@ def decoder2D(features, apply_3to2 = True):
         for i, (dim, ksize, stride, padding) in enumerate(zip(dims, ksizes, strides, paddings)):
             if features:
                 net += features.pop()
-                
+
             #net = slim2.conv2d_transpose(net, dim, ksize, stride = stride, padding = padding)
             #net = slim2.conv2d(net, dim, ksize, stride = 1, padding = 'SAME')
 
@@ -347,7 +347,7 @@ def encoder2D(net, is_training):
     with slim.arg_scope([slim.conv2d],
                         activation_fn=tf.nn.relu,
                         padding = 'SAME'):
-        
+
         dims = [32, 64, 128, 256]
         ksizes = [3, 3, 3, 3]
 
@@ -369,11 +369,12 @@ def encoder_decoder3D(inputs, is_training, aux = None):
     net = inputs.pop()
     skipcons = [net]
 
+
     with slim.arg_scope([slim.conv3d, slim.conv3d_transpose],
                         activation_fn=tf.nn.relu):
 
         if const.H == const.W == 128:
-            #64 -> 32 -> 16 -> 8 -> 4 -> 1            
+            #64 -> 32 -> 16 -> 8 -> 4 -> 1
             dims = [d0, 2*d0, 4*d0, 8*d0, 16*d0]
             ksizes = [4, 4, 4, 4, 4]
             strides = [2, 2, 2, 2, 4]
@@ -401,7 +402,7 @@ def encoder_decoder3D(inputs, is_training, aux = None):
         ksizes = ksizes[::-1]
         strides = strides[::-1]
         paddings = paddings[::-1]
-        
+
         for i, (dim, ksize, stride, padding) in enumerate(zip(dims, ksizes, strides, paddings)):
             net = slim2.conv3d_transpose(net, dim, ksize, stride=stride, padding=padding)
             net = batch_norm(net, is_train=is_training, name=f"decoder_{i}")
@@ -420,19 +421,19 @@ def MnistAE(net):
                         activation_fn = tf.nn.relu,
                         normalizer_fn = slim.batch_norm,
                         padding = 'SAME'):
-        
+
         net = slim2.conv2d(net, 8, [3,3], stride = [2,2])
         net = slim2.conv2d(net, 16, [3,3], stride = [2,2])
         net = slim2.conv2d(net, 64, [7,7], stride = [1,1], padding = 'VALID')
-        
+
         net = slim2.conv2d_transpose(net, 16, [7, 7], stride = [1, 1], padding= 'VALID')
         net = slim2.conv2d_transpose(net, 8, [3,3], stride = [2,2])
         net = slim2.conv2d_transpose(net, 1, [3,3], stride = [2,2],
                                      normalizer_fn = None, activation_fn = None)
-        
+
     return tf.nn.sigmoid(net)
-        
-    
+
+
 def MnistAEconvlstm(x):
     from .network_down import make_lstmConv
 
@@ -444,8 +445,8 @@ def MnistAEconvlstm(x):
 
     out, extra = make_lstmConv(
         net,
-        None, 
-        x, 
+        None,
+        x,
         [['convLSTM', 64, 1, 8, 64]],
         stochastic = const.MNIST_CONVLSTM_STOCHASTIC,
         weight_decay = 0.0001,
@@ -474,7 +475,7 @@ def embedding_network(img):
         embedding = img
         for i, (dim, ksize, padding) in enumerate(zip(dims, ksizes, paddings)):
             embedding = slim2.conv2d(embedding, dim, ksize, stride = 1, padding = padding)
-            
+
         embedding = slim2.conv2d(embedding, const.embedding_size, 1, stride = 1, activation_fn = None)
 
     return embedding

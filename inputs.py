@@ -36,7 +36,7 @@ Eager Mode:
 - in eager mode, q_ph is ignored
 
 it is difficult to have a unified input pipeline for both eager and graph mode because
-1. we can't call/construct input tensors once per iteration in graph mode 
+1. we can't call/construct input tensors once per iteration in graph mode
 2. we can't use placeholders in eager mode
 
 '''
@@ -49,7 +49,7 @@ class Input:
 
     return a (dictionary of) tf tensors
     '''
-    
+
     def data(self, index = None):
         raise NotImplementedError
 
@@ -63,14 +63,14 @@ class TFDataInput(Input):
     this supposed to be used with the tf.data API (in particular, the
     make_one_shot_iterator function)
     '''
-    
+
     def __init__(self):
         #q_ph explained in self.data_default
         if not const.eager:
             self.q_ph = tf.placeholder(dtype = tf.int32, shape = ())
         else:
             self.q_ph = None
-    
+
     def data(self, index = None):
         #use index to grab data from train, val, or test set
         if const.eager:
@@ -78,14 +78,14 @@ class TFDataInput(Input):
             return self.data_eager(index)
         else:
             return self.data_default()
-            
+
     def data_eager(self, index):
         return self.data_for_selector(tf.constant(index))
 
     def data_default(self):
         #in non-eager mode, we feed in data to this placeholder, else we leave it empty
         return self.data_for_selector(self.q_ph)
-            
+
     def data_for_selector(self, selector):
 
         #case is buggy for eager mode...
@@ -94,6 +94,7 @@ class TFDataInput(Input):
                     self.val_data.get_next,
                     self.test_data.get_next][selector.numpy()]()
         else:
+
             rval = tf.case({
                 tf.equal(selector, 0) : lambda: self.train_data.get_next(),
                 tf.equal(selector, 1) : lambda: self.val_data.get_next(),
@@ -107,7 +108,7 @@ class MNISTInput(Input):
     def __init__(self):
         super().__init__()
         self.q_ph = None
-        
+
         mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
         mnist_train = mnist.train.images #55k x 784
         mnist_val = mnist.validation.images #5k
@@ -131,11 +132,11 @@ class MNISTInput(Input):
     def data(self, index = None):
         print('warning, only using training data')
         return self.train
-    
+
 class ShapenetInput(TFDataInput):
     def __init__(self):
         super().__init__()
-                
+
         self.train_data = self.make_data(const.train_file, True)
         self.val_data = self.make_data(const.val_file, False)
         self.test_data = self.make_data(const.test_file, False, True)
@@ -162,9 +163,9 @@ class ShapenetInput(TFDataInput):
         #         for i in range(const.GEN_NUM_VIEWS):
         #             fns2.append(fn)
         #     fns = fns2
-        
+
         nrots = 1 if istest else 8
-        
+
         data = tf.data.TFRecordDataset(fns, compression_type = 'GZIP')
 
         if const.generate_views:
@@ -174,7 +175,7 @@ class ShapenetInput(TFDataInput):
             data = data.batch(1)
             iterator = data.make_one_shot_iterator()
             return iterator
-        
+
         data = data.map(self.decode, num_parallel_calls = 8)
         data = data.map(self.normalize_batch(nrots), num_parallel_calls = nrots)
         data = data.apply(tf.contrib.data.unbatch())
@@ -196,7 +197,7 @@ class MultiViewInput(ShapenetInput):
             feature_names.extend(['segs', 'voxel', 'obj1', 'obj2'])
         if const.MASKED_DATASET:
             feature_names.append('valids')
-        
+
         stuff = tf.parse_single_example(
             example,
             features={k: tf.FixedLenFeature([], tf.string) for k in feature_names}
@@ -229,11 +230,11 @@ class MultiViewInput(ShapenetInput):
             obj2 = tf.reshape(obj2, (128, 128, 128))
 
             rvals.extend([segs, voxel, obj1, obj2])
-            
+
         if const.MASKED_DATASET:
             valids = tf.decode_raw(stuff['valids'], tf.uint8)
             valids = tf.reshape(valids, (N,))
-            
+
             rvals.append(valids)
 
         return rvals
@@ -249,16 +250,16 @@ class MultiViewInput(ShapenetInput):
             batched_output = Munch({k: [] for k in outputs[0]})
             for output in outputs:
                 for k, v in output.items():
-                    batched_output[k].append(v)                    
+                    batched_output[k].append(v)
             for k, v in batched_output.items():
                 if isinstance(v[0], tuple):
                     batched_output[k] = zip(*v)
                     batched_output[k] = tuple(map(lambda w: tf.stack(w, axis = 0), batched_output[k]))
                 else:
                     batched_output[k] = tf.stack(v, axis = 0)
-                    
+
             return batched_output
-        
+
         return normalize_
 
     def normalize_batch2(self, n):
@@ -277,24 +278,24 @@ class MultiViewInput(ShapenetInput):
             batched_output = Munch({k: [] for k in outputs[0]})
             for output in outputs:
                 for k, v in output.items():
-                    batched_output[k].append(v)                    
+                    batched_output[k].append(v)
             for k, v in batched_output.items():
                 if isinstance(v[0], tuple):
                     batched_output[k] = zip(*v)
                     batched_output[k] = tuple(map(lambda w: tf.stack(w, axis = 0), batched_output[k]))
                 else:
                     batched_output[k] = tf.stack(v, axis = 0)
-                    
+
             return batched_output
-        
+
         return normalize_
 
 foo_counters = []
-    
+
 class MultiViewReconstructionInput(MultiViewInput):
 
     def normalize(self, images, masks, zmaps, segs, voxel, obj1, obj2):
-    
+
         def extract_view_(images, masks, zmaps, segs, idx):
             offset_tensor = tf.stack([idx, 0, 0, 0])
             size_tensor = [1, -1, -1, -1]
@@ -315,14 +316,14 @@ class MultiViewReconstructionInput(MultiViewInput):
         random.seed(0)
         views, idxs = list(zip(*[
             extract_rand_view(images, masks, zmaps, segs, seed = random.randint(0,100))
-            for _ in range(const.NUM_VIEWS + const.NUM_PREDS) 
+            for _ in range(const.NUM_VIEWS + const.NUM_PREDS)
         ]))
 
         images, masks, zmaps, segs = list(zip(*views))
         phi_idx, theta_idx, idx = list(zip(*idxs))
 
         images = [img/255.0 for img in images]
-        segs = [seg/255.0 for seg in segs]        
+        segs = [seg/255.0 for seg in segs]
         masks = [mask/255.0 for mask in masks]
         zmaps = [zmap*2.0 for zmap in zmaps]
 
@@ -334,7 +335,7 @@ class MultiViewReconstructionInput(MultiViewInput):
         images = [tf.reshape(img, (const.Hdata, const.Wdata, 3)) for img in images]
         masks = [tf.reshape(mask, (const.Hdata, const.Wdata, 1)) for mask in masks]
         zmaps = [tf.reshape(zmap, (const.Hdata, const.Wdata, 1)) for zmap in zmaps]
-        segs = [tf.reshape(seg, (const.Hdata, const.Wdata, 2)) for seg in segs]        
+        segs = [tf.reshape(seg, (const.Hdata, const.Wdata, 2)) for seg in segs]
 
         images = tuple(images)
         masks = tuple(masks)
@@ -351,7 +352,7 @@ class MultiViewReconstructionInput(MultiViewInput):
                         )
                     )
                 )
-            
+
             images = resize(images)
             masks = resize(masks)
             zmaps = resize(zmaps)
@@ -367,7 +368,7 @@ class MultiViewReconstructionInput2(MultiViewInput):
     def normalize(self, images, masks, zmaps, *args):
         #called once per dataset
         assert len(args) == int(const.MASKED_DATASET)
-        
+
         if const.MASKED_DATASET:
             valids = args[0]
 
@@ -390,7 +391,7 @@ class MultiViewReconstructionInput2(MultiViewInput):
             else:
                 if const.MASKED_DATASET:
                     raise Exception('this case is not yet implemented...')
-                
+
                 phi_idx = tf.constant(random.randint(0, const.VV-1), dtype = tf.int32)
                 if const.ARITH_MODE:
                     phi_idx = tf.constant(0, dtype = tf.int32)
@@ -401,7 +402,7 @@ class MultiViewReconstructionInput2(MultiViewInput):
         random.seed(2)
         views, idxs = list(zip(*[
             extract_rand_view(images, masks, zmaps, seed = random.randint(0,100))
-            for _ in range(const.NUM_VIEWS + const.NUM_PREDS) 
+            for _ in range(const.NUM_VIEWS + const.NUM_PREDS)
         ]))
 
         images, masks, zmaps = list(zip(*views))
@@ -434,7 +435,7 @@ class MultiViewReconstructionInput2(MultiViewInput):
                         )
                     )
                 )
-            
+
             images = resize(images)
             masks = resize(masks)
             zmaps = resize(zmaps)
@@ -445,34 +446,34 @@ class MultiViewReconstructionInput2(MultiViewInput):
 
         #     counter = tf.Variable(0, dtype = tf.int32)
         #     foo_counters.append(tf.variables_initializer([counter]))
-            
+
         #     increment_op = tf.assign_add(counter, 1)
         #     counter_mod = tf.mod(counter, const.GEN_NUM_VIEWS)
 
         #     # printing is a bit weird due to the async ??
-        #     counter_mod = utils.tfpy.print_val(counter_mod, 'counter is') 
-            
+        #     counter_mod = utils.tfpy.print_val(counter_mod, 'counter is')
+
         #     elev_index = (counter_mod-1) / const.AZIMUTH_GRANULARITY
         #     azimuth_index = tf.mod((counter_mod-1), const.AZIMUTH_GRANULARITY)
 
         #     elev_index = tf.cast(elev_index, tf.float32)
         #     azimuth_index = tf.cast(azimuth_index, tf.float32)
-            
+
         #     with tf.control_dependencies([increment_op]):
         #         phi_idx = phi_idx[:3] + (elev_index,)
         #         theta_idx = theta_idx[:3] + (azimuth_index,)
-            
+
         names = ['images', 'masks', 'depths', 'phis', 'thetas']
         stuff = [images, masks, zmaps, phi_idx, theta_idx]
 
         return Munch(zip(names, stuff))
 
 class GQNInput(Input):
-    
+
     def __init__(self):
         #self.q_ph = None
         self.q_ph = tf.placeholder(dtype = tf.int32, shape = ())
-        
+
         from gqn_inputs import DataReader
         kwargs = {
             'dataset': const.GQN_DATA_NAME,
@@ -484,7 +485,7 @@ class GQNInput(Input):
         self.test_data_reader = DataReader(mode = 'test', **kwargs)
 
         assert const.NUM_PREDS == 1
-        
+
     def data(self):
         #self.q_ph = utils.tfpy.print_val(self.q_ph, 'qph')
 
@@ -493,7 +494,7 @@ class GQNInput(Input):
             tf.equal(self.q_ph, 1): lambda: self.test_data_reader.read(batch_size=const.BS),
             tf.equal(self.q_ph, 2): lambda: self.test_data_reader.read(batch_size=const.BS)
         }, exclusive = True)
-        
+
         rval = self.munch(rval)
 
         if const.generate_views:
@@ -504,15 +505,15 @@ class GQNInput(Input):
             counter_mod = tf.mod(counter, const.GEN_NUM_VIEWS)
 
             # printing is a bit weird due to the async ??
-            counter_mod = utils.tfpy.print_val(counter_mod, 'counter is') 
-            
+            counter_mod = utils.tfpy.print_val(counter_mod, 'counter is')
+
             elev_index = (counter_mod-1) / const.AZIMUTH_GRANULARITY
             azimuth_index = tf.mod((counter_mod-1), const.AZIMUTH_GRANULARITY)
 
             elev_index = tf.cast(elev_index, tf.float32)
             azimuth_index = tf.cast(azimuth_index, tf.float32)
-            
-            azimuth = azimuth_index * (360/const.AZIMUTH_GRANULARITY) 
+
+            azimuth = azimuth_index * (360/const.AZIMUTH_GRANULARITY)
             azimuth = azimuth + tf.cast(azimuth > 180, tf.float32) * (-360)
             azimuth /= 180 / np.pi
 
@@ -521,14 +522,14 @@ class GQNInput(Input):
             else:
                 elev_step = (const.MAX_ELEV-const.MIN_ELEV) / (const.ELEV_GRANULARITY - 1)
                 elev = (const.MIN_ELEV + elev_index * elev_step) / (180 / np.pi)
-                
-            
+
+
             with tf.control_dependencies([increment_op]):
                 #phi, theta is the correct order here
                 query_cam = tf.expand_dims(tf.stack([elev, azimuth], axis = 0), axis = 0)
-                
+
             rval.query.query_camera = query_cam
-        
+
         return rval
 
     def munch(self, task):
@@ -566,7 +567,7 @@ class GQNShapenet:
     def make_query(self, data):
         return Munch(context = self.make_context(data),
                      query_camera = self.make_query_camera(data))
-    
+
     def make_context(self, data):
         return Munch(frames = self.make_frames(data),
                      cameras = self.make_cameras(data))
@@ -576,7 +577,7 @@ class GQNShapenet:
 
     def make_frames(self, data):
         return data.images[:-1]
-        
+
     def make_cameras(self, data):
         return [self.yp_for_pt(p, t) for (p,t) in zip(data.phis[:-1], data.thetas[:-1])]
 
@@ -589,4 +590,3 @@ class GQNShapenet:
         phi = phi * np.pi/180.
         theta = theta * np.pi/180.
         return tf.stack([phi, theta], axis = 1)
-

@@ -47,12 +47,13 @@ if __name__ == '__main__':
     else:
         raise Exception('unknown model')
 
-    
+
     op_cls = operators.GenerateViews if const.generate_views else operators.ModalOperator
+    
     test_modes = ['test']
     if const.generate_views:
         test_modes = ['test'] * const.GEN_NUM_VIEWS
-    
+
     operator = op_cls(
         model,
         ['train'], ['valt', 'valv'], test_modes,

@@ -16,7 +16,6 @@ class Net:
     def __init__(self, input_):
         self.weights = {}
         self.input = input_
-
         #this is used to select whether to pull data from train, val, or test set
         self.data_selector = input_.q_ph
         if not const.eager:
@@ -26,7 +25,7 @@ class Net:
 
     def add_weights(self, name):
         self.weights[name] = utils.tfutil.current_scope_and_vars()
-        
+
     def optimize(self, fn):
         self.optimizer = tf.train.AdamOptimizer(const.lr, const.mom)
         self.opt = utils.tfutil.make_opt_op(self.optimizer, fn)
@@ -44,10 +43,10 @@ class Net:
     def build_vis(self):
         #should save a Munch dictionary of values to self.vis
         raise NotImplementedError
-    
+
     def assemble(self):
         #define all the summaries, visualizations, etc
-        
+
         with tf.name_scope('summary'):
             summ.scalar('loss', self.loss_) #just to keep it consistent
 
@@ -63,12 +62,12 @@ class Net:
         self.test_run = Munch(evaluator = self.evaluator, vis = self.vis, summary = self.summary)
         self.train_run = Munch(opt = self.opt, summary = self.summary)
         self.val_run = Munch(loss = self.loss_, summary = self.summary, vis = self.vis)
-    
+
 class TestInput:
     def __init__(self, inputs):
         self.weights = {}
         self.data_selector = inputs.q_ph
-        
+
         data = inputs.data()
 
         def foo(x):
@@ -84,7 +83,7 @@ class TestInput:
             return total
 
         bar = foo(data)
-        
+
         self.test_run = Munch(bar = bar)
         self.val_run = Munch(bar = bar)
         self.train_run = Munch(bar = bar)
@@ -92,7 +91,7 @@ class TestInput:
     def go(self):
         pass
 
-        
+
 class MnistAE(Net):
 
     def go_up_to_loss(self, index = None, is_training=None):
@@ -104,20 +103,20 @@ class MnistAE(Net):
             net_fn = utils.nets.MnistAEconvlstm
         else:
             net_fn = utils.nets.MnistAE
-            
+
         self.pred = net_fn(self.img)
 
         self.loss_ = utils.losses.binary_ce_loss(self.pred, self.img)
-        
+
         if const.MNIST_CONVLSTM_STOCHASTIC:
             self.loss_ += self.pred.loss #kl
-        
+
         return self.loss_
-        
+
     def prepare_data(self, index):
         data = self.input.data(index)
         self.__dict__.update(data) #so we can do self.images, etc.
-        
+
     def build_vis(self):
         self.vis = {
             'in': self.img,
@@ -130,7 +129,7 @@ class MultiViewNet(Net):
         # awkward, but necessary in order to record gradients using tf.eager
         if const.eager:
             self.is_training = tf.constant(is_training, tf.bool)
-        
+
         self.prepare_data(index)
         self.pred_aux_input = self.construct_pred_aux_input()
         self.pred_main_input = self.construct_pred_main_input()
@@ -142,7 +141,7 @@ class MultiViewNet(Net):
     def prepare_data(self, index):
         data = self.input.data(index)
         self.__dict__.update(data) #so we can do self.images, etc.
-        
+
         #for convenience:
         self.phis_oh = [tf.one_hot(phi, depth = const.VV) for phi in self.phis]
         self.thetas_oh = [tf.one_hot(theta, depth = const.HV) for theta in self.thetas]
@@ -161,10 +160,10 @@ class MultiViewNet(Net):
             self.depths_[:const.NUM_VIEWS],
             self.images[:const.NUM_VIEWS],
         ]
-            
+
     def construct_pred_main_input(self):
         pred_inputs = self.get_views_for_prediction()
-        
+
         pred_inputs = list(zip(*pred_inputs))
         pred_inputs = [tf.concat(x, axis = 3) for x in pred_inputs]
 
@@ -178,7 +177,7 @@ class MultiViewNet(Net):
             )
             _pred_inputs = tf.unstack(_pred_inputs, axis = 0)
             return _pred_inputs
-        
+
         if isinstance(pred_inputs[0], list):
             rval = [stack_unproject_unstack(inp) for inp in pred_inputs]
         else:
@@ -211,7 +210,7 @@ class MultiViewNet(Net):
 
     def bin2phi(self, bin):
         return tf.cast(bin, tf.float32) * const.VDELTA + const.MINV
-    
+
     def i2theta(self, idx):
         return self.bin2theta(self.thetas[idx])
 
@@ -236,19 +235,19 @@ class MultiViewNet(Net):
         dthetas = tf.stack(dthetas, 0)
         phi1s = tf.stack(phi1s, 0)
         phi2s = tf.stack(phi2s, 0)
-        
+
         voxs = tf.stack(voxs, 0)
-        
+
         f = lambda x: utils.voxel.translate_given_angles(*x)
         out = tf.map_fn(f, [dthetas, phi1s, phi2s, voxs], dtype = tf.float32)
         return tf.unstack(out, axis = 0)
-    
+
 class MultiViewReconstructionNet(MultiViewNet):
 
     resize_unproject = True
 
     def predict_(self, pred_main_inputs, pred_aux_input):
-        
+
         pred_main_inputs_ = [pred_main_inputs[0]]
 
         pred_main_inputs__ = self.translate_views_multi(
@@ -264,7 +263,7 @@ class MultiViewReconstructionNet(MultiViewNet):
         net_out = utils.nets.voxel_net_3d(
             pred_main_input, aux = pred_aux_input, outsize = const.S, d0 = 16
         )
-        
+
         self.pred_voxel = net_out.pred
         self.pred_logit = net_out.logit
         self.pred_features = net_out.features
@@ -285,7 +284,7 @@ class MultiViewReconstructionNet(MultiViewNet):
     def flatten(self, voxels):
         pred_depth = utils.voxel.voxel2depth_aligned(voxels)
         pred_mask = utils.voxel.voxel2mask_aligned(voxels)
-        
+
         #replace bg with grey
         hard_mask = tf.cast(pred_mask > 0.5, tf.float32)
         pred_depth *= hard_mask
@@ -297,23 +296,23 @@ class MultiViewReconstructionNet(MultiViewNet):
 
 
     def reproject(self): #this part is unrelated to the consistency...
-        
+
         def rot_mat_for_angles_(invert_rot = False):
             return utils.voxel.get_transform_matrix_tf(
-                theta = self.i2theta(0), 
-                phi = self.i2phi(0), 
+                theta = self.i2theta(0),
+                phi = self.i2phi(0),
                 invert_rot = invert_rot
             )
 
         world2cam_rot_mat = rot_mat_for_angles_()
         cam2world_rot_mat = rot_mat_for_angles_(invert_rot = True)
-        
+
         #let's compute the oriented gt_voxel
         gt_voxel = tf.expand_dims(self.voxel, axis = 4)
         gt_voxel = utils.voxel.transformer_preprocess(gt_voxel)
         #simply rotate, but don't project!
         gt_voxel = utils.voxel.rotate_voxel(gt_voxel, world2cam_rot_mat)
-        
+
         self.gt_voxel = gt_voxel
 
         #used later
@@ -323,7 +322,7 @@ class MultiViewReconstructionNet(MultiViewNet):
         obj2 = tf.expand_dims(self.obj2, axis = 4)
         obj2 = utils.voxel.transformer_preprocess(obj2)
         self.obj2 = utils.voxel.rotate_voxel(obj2, world2cam_rot_mat)
-        
+
         if not const.DEBUG_VOXPROJ:
             voxels_to_reproject = self.pred_voxel
         else:
@@ -354,22 +353,22 @@ class MultiViewReconstructionNet(MultiViewNet):
         self.pred_depths, self.pred_masks = list(zip(*list(map(self.flatten, projected_voxels))))
         self.projected_voxels = projected_voxels
 
-        
+
     def loss(self):
 
         if const.S == 64:
             self.gt_voxel = utils.tfutil.pool3d(self.gt_voxel)
         elif const.S == 32:
             self.gt_voxel = utils.tfutil.pool3d(utils.tfutil.pool3d(self.gt_voxel))
-        
+
         loss = utils.losses.binary_ce_loss(self.pred_voxel, self.gt_voxel)
         if const.DEBUG_LOSSES:
             loss = utils.tfpy.print_val(loss, 'ce_loss')
-        
+
         if const.DEBUG_VOXPROJ or const.DEBUG_UNPROJECT:
             z = tf.Variable(0.0)
             loss = z-z
-        
+
         self.loss_ = loss
 
     def build_vis(self):
@@ -394,14 +393,14 @@ class MultiViewQueryNet(MultiViewNet):
     def get_views_for_prediction(self):
         #no depth, mask, or seg
         return [self.images[:const.NUM_VIEWS]]
-    
+
     def preunprojection(self, pred_inputs):
         with tf.variable_scope('2Dencoder'):
             return utils.tfutil.concat_apply_split(
                 pred_inputs,
                 utils.nets.encoder2D
             )
-    
+
     def predict_(self, pred_main_inputs, pred_aux_input):
         pred_main_inputs_ = [
             self.translate_views_multi(
@@ -425,7 +424,7 @@ class MultiViewQueryNet(MultiViewNet):
 
     def aggregate_inputs(self, inputs):
         assert const.AGGREGATION_METHOD == 'average'
-        
+
         n = 1.0/float(len(inputs[0]))
         return [sum(input)*n for input in inputs]
 
@@ -461,8 +460,8 @@ class MultiViewQueryNet(MultiViewNet):
         with tf.variable_scope('2Ddecoder'):
             pred_views = utils.nets.decoder2D(oriented_features)
         self.pred_views = tf.split(pred_views, const.NUM_PREDS, axis = 0)
-        
-        
+
+
     def build_vis(self):
         self.vis = Munch(
             input_views = tf.concat(self.images[:const.NUM_VIEWS], axis = 2),
@@ -470,9 +469,9 @@ class MultiViewQueryNet(MultiViewNet):
             pred_views = tf.concat(self.pred_views, axis = 2),
             dump = {'occ': utils.nets.foo} if utils.nets.foo else {}
         )
-        
+
     def loss(self):
-        
+
         self.queried_views = self.images[const.NUM_VIEWS:]
 
         loss = sum(utils.losses.l2loss(pred, query, strict = True)
@@ -481,7 +480,7 @@ class MultiViewQueryNet(MultiViewNet):
 
         #z = tf.Variable(0.0)
         #loss += z-z
-        
+
         if const.DEBUG_LOSSES:
             loss = utils.tfpy.print_val(loss, 'l2_loss')
         self.loss_ = loss
@@ -491,12 +490,13 @@ class GQNBase(Net):
     def go_up_to_loss(self, index = None, is_training=None):
         if const.eager:
             self.is_training = tf.constant(is_training, tf.bool)
+
         self.setup_data()
 
         with tf.variable_scope('main'):
             self.predict()
             self.add_weights('main_weights')
-            
+
         self.loss()
         return self.loss_
 
@@ -532,14 +532,14 @@ class GQNBase(Net):
 
         if const.DEBUG_LOSSES:
             loss = utils.tfpy.print_val(loss, 'recon-loss')
-            
+
         if const.GQN3D_CONVLSTM_STOCHASTIC:
             loss += utils.tfpy.print_val(self.pred_view.loss, 'kl-loss')
 
         if const.EMBEDDING_LOSS:
             embed_loss = utils.losses.embedding_loss(self.embed2d, self.embed3d)
             loss += utils.tfpy.print_val(const.embed_loss_coeff * embed_loss, 'embed-loss')
-        
+
         self.loss_ = loss
 
     def build_vis(self):
@@ -569,7 +569,7 @@ class GQNBase(Net):
 
             query_views = tf.expand_dims(self.target[3], axis = 0) #view 3!!!
             query_views = tf.tile(query_views, (const.BS, 1, 1, 1))
-            
+
             self.vis = Munch(
                 input_views = input_views,
                 query_views = query_views,
@@ -579,7 +579,7 @@ class GQNBase(Net):
 
 class GQN_with_2dencoder(GQNBase):
     '''shares some fns w/ gqn3d and gqn2d'''
-    
+
     def get_inputs2Denc(self):
         return self.query.context.frames
 
@@ -591,23 +591,24 @@ class GQN_with_2dencoder(GQNBase):
                 f
                 #utils.nets.encoder2D(*,self.is_training)
             )
-        
+
     def aggregate(self, features):
         n = 1.0/float(len(features[0]))
         return [sum(feature)*n for feature in features]
-        
+
 class GQN3D(GQN_with_2dencoder):
 
     def predict(self):
         inputs2Denc = self.get_inputs2Denc()
         outputs2Denc = self.get_outputs2Denc(inputs2Denc)
-        
+
         inputs3D = self.get_inputs3D(outputs2Denc)
+
         outputs3D = self.get_outputs3D(inputs3D)
 
         if const.ARITH_MODE:
             outputs3D = self.do_arithmetic(outputs3D)
-        
+
         inputs2Ddec = self.get_inputs2Ddec(outputs3D)
         outputs2Ddec = self.get_outputs2Ddec(inputs2Ddec)
 
@@ -634,29 +635,29 @@ class GQN3D(GQN_with_2dencoder):
         #3 contains [-,1,2]
 
         #testing #2 - #0 + #1 = #3
-        
+
         def arith(feature):
             assert const.BS == 4
             feature =  tf.expand_dims(feature[2] - feature[0] + feature[1], axis = 0)
             return tf.tile(feature, (const.BS, 1, 1, 1, 1))
-        
+
         return [arith(feature) for feature in features]
-                           
+
     def get_inputs3D(self, inputs):
         unprojected_features = self.unproject_inputs(inputs)
         aligned_features = self.align_to_first(unprojected_features) # 4 scales, each in 3 views
         return self.aggregate(aligned_features)
-        
+
     def get_outputs3D(self, inputs):
         with tf.variable_scope('3DED'):
             return utils.nets.encoder_decoder3D(inputs, self.is_training)
-    
+
     def get_inputs2Ddec(self, inputs):
         aligned_inputs = self.align_to_query(inputs) #4 scales
         projected_inputs = self.project_inputs(aligned_inputs)
 
         self.__todump = projected_inputs #should also be postprocessed
-        
+
         with tf.variable_scope('depthchannel_net'):
             return [utils.nets.depth_channel_net_v2(feat)
                     for feat in projected_inputs]
@@ -672,7 +673,6 @@ class GQN3D(GQN_with_2dencoder):
     def convlstm_decoder(self, inputs):
         #we get feature maps of different resolution as input
         #downscale last and concat with second last
-
         inputs = [utils.tfutil.poolorunpool(x, 16) for x in inputs]
         net = tf.concat(inputs, axis = -1)
         net = slim.conv2d(net, 256, [3, 3])
@@ -682,7 +682,7 @@ class GQN3D(GQN_with_2dencoder):
             net,
             None,
             self.target,
-            [['convLSTM', const.CONVLSTM_DIM, dims, const.CONVLSTM_STEPS, const.CONVLSTM_DIM]], 
+            [['convLSTM', const.CONVLSTM_DIM, dims, const.CONVLSTM_STEPS, const.CONVLSTM_DIM]],
             stochastic = const.GQN3D_CONVLSTM_STOCHASTIC,
             weight_decay = 1E-5,
             is_training = const.mode == 'train' or const.force_batchnorm_trainmode,
@@ -696,7 +696,7 @@ class GQN3D(GQN_with_2dencoder):
         return Munch(pred_view = out_img, embedding = embedding, kl = extra['kl_loss'])
 
     def unproject_inputs(self, inputs):
-        
+
         def stack_unproject_unstack(_inputs):
             _inputs = tf.stack(_inputs, axis = 0)
             _inputs = tf.map_fn(
@@ -705,7 +705,7 @@ class GQN3D(GQN_with_2dencoder):
             )
             _inputs = tf.unstack(_inputs, axis = 0)
             return _inputs
-        
+
         return [stack_unproject_unstack(inp) for inp in inputs]
 
     def project_inputs(self, inputs):
@@ -725,20 +725,20 @@ class GQN3D(GQN_with_2dencoder):
         f = lambda x: utils.voxel.translate_given_angles(*x)
         out = tf.map_fn(f, [dthetas, phi1s, phi2s, voxs], dtype = tf.float32)
         return tf.unstack(out, axis = 0)
-    
+
     def align_to_first(self, features):
         return [self.align_to_first_single(feature) for feature in features]
 
     def align_to_query(self, features):
         return [self.align_to_query_single(feature) for feature in features]
-    
+
     def align_to_first_single(self, feature):
         #3 features from different views
         dthetas = [self.thetas[0] - theta for theta in self.thetas]
         phi1s = self.phis
         phi2s = [self.phis[0] for _ in self.phis]
         return self.translate_multiple(dthetas, phi1s, phi2s, feature)
-    
+
     def align_to_query_single(self, feature):
         #a single feature from view 0
         dthetas = [self.query_theta - self.thetas[0]]
@@ -752,12 +752,12 @@ class GQN3D(GQN_with_2dencoder):
 
         if const.EMBEDDING_LOSS:
             self.vis.embed = tf.concat([self.embed2d, self.embed3d], axis = 2)
-        
+
 class GQN2D(GQN_with_2dencoder):
-    
+
     def predict(self):
         self.tensors_to_dump = {}
-        
+
         inputs2Denc = self.get_inputs2Denc()
         outputs2Denc = self.get_outputs2Denc(inputs2Denc)
         encoded = self.aggregate(outputs2Denc)
@@ -779,7 +779,7 @@ class GQN2D(GQN_with_2dencoder):
 
     def setup_data(self):
         super().setup_data()
-        
+
         thetas_r = list(map(utils.utils.radians, self.thetas))
         phis_r = list(map(utils.utils.radians, self.phis))
         query_theta_r = utils.utils.radians(self.query_theta)
@@ -802,16 +802,16 @@ class GQN2Dtower(GQNBase):
         )
         encoded = sum(encoded)
         if const.ARITH_MODE:
-            encoded = self.do_arithmetic(encoded)        
-        
+            encoded = self.do_arithmetic(encoded)
+
         #decoder
         camera = tf.reshape(self.query.query_camera, (const.BS, 1, 1, 2))
-        
+
         out, extra = utils.gqn_network.make_lstmConv(
             encoded,
             camera,
             self.target,
-            [['convLSTM', const.CONVLSTM_DIM, 3, const.CONVLSTM_STEPS, const.CONVLSTM_DIM]], 
+            [['convLSTM', const.CONVLSTM_DIM, 3, const.CONVLSTM_STEPS, const.CONVLSTM_DIM]],
             stochastic = False,
             weight_decay = 1E-5,
             is_training = self.is_training,#const.mode == 'train' or const.force_batchnorm_trainmode,
@@ -823,7 +823,7 @@ class GQN2Dtower(GQNBase):
         out.loss = extra['kl_loss']
 
         self.pred_view = out
-        
+
 
     def do_arithmetic(self, features):
         assert const.BS == 4

@@ -17,12 +17,12 @@ class Mode:
         self.data_name = data_name
         self.ops_name = ops_name
 
-        
+
 class Model:
     def __init__(self, net, modes = None):
         self.net = net
         self.data_selector = self.net.data_selector
-        
+
         self.modes = modes
         if modes is None:
             self.modes = {
@@ -31,16 +31,16 @@ class Model:
                 'valv': Mode('val', 'val_run'),
                 'test': Mode('test', 'test_run'),
             }
-            
 
         if not const.eager:
             self.net.go() #build the graph here
-        
+
     def get_ops(self, mode):
+        st()
         if const.eager:
             self.net.go(self.index_for_mode(mode), is_training=self.get_is_training(mode))
         return getattr(self.net, self.modes[mode].ops_name)
-    
+
     def get_data_name(self, mode):
         return self.modes[mode].data_name
 
@@ -55,7 +55,7 @@ class Model:
         else:
             is_training = False
         return is_training
-    
+
     def fd_for_mode(self, mode):
         assert not const.eager
         if self.data_selector is None:
@@ -66,10 +66,12 @@ class Model:
                     self.net.is_training:is_training}
 
     def run(self, mode, sess = None):
+
         ops = self.get_ops(mode)
         if const.eager:
             return utils.utils.apply_recursively(ops, utils.tfutil.read_eager_tensor)
         else:
+            st()
             return sess.run(ops, feed_dict = self.fd_for_mode(mode))
 
 
@@ -101,7 +103,7 @@ class PersistentModel(Model):
 
             if not weights: #nothing to do
                 continue
-            
+
             partsavepath = path.join(partpath, 'X')
 
             saver = self.savers[partname]
@@ -141,19 +143,20 @@ class PersistentModel(Model):
             saver.restore(sess, loadpath)
         return config.step
 
-    
+
 class MultiViewReconstruction(PersistentModel):
     def __init__(self):
         input_ = inputs.MultiViewReconstructionInput()
         net = nets.MultiViewReconstructionNet(input_)
         super().__init__(net, const.ckpt_dir)
 
-        
+
 class MultiViewQuery(PersistentModel):
     def __init__(self):
         input_ = inputs.MultiViewReconstructionInput()
         net = nets.MultiViewQueryNet(input_)
-        
+        import ipdb ; ipdb.set_trace()
+
         super().__init__(net, const.ckpt_dir)
 
 class GQNBaseModel(PersistentModel):
@@ -162,12 +165,14 @@ class GQNBaseModel(PersistentModel):
             input_ = inputs.GQNInput()
         else:
             input_ = inputs.GQNShapenet()
+
+
         net = net_cls(input_)
         super().__init__(net, const.ckpt_dir)
 
         if const.generate_views:
             self.modes['gen'] = Mode('test', 'gen_run')
-        
+
 class GQN2D(GQNBaseModel):
     def __init__(self):
         return super().__init__(nets.GQN2D)
@@ -175,9 +180,10 @@ class GQN2D(GQNBaseModel):
 class GQN2Dtower(GQNBaseModel):
     def __init__(self):
         return super().__init__(nets.GQN2Dtower)
-        
+
 class GQN3D(GQNBaseModel):
     def __init__(self):
+
         return super().__init__(nets.GQN3D)
 
 class TestGQN(GQNBaseModel):
@@ -189,4 +195,3 @@ class MnistAE(PersistentModel):
         input_ = inputs.MNISTInput()
         net = nets.MnistAE(input_)
         super().__init__(net, const.ckpt_dir)
-
